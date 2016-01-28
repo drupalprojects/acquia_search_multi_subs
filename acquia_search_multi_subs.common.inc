@@ -296,24 +296,30 @@ function acquia_search_multi_subs_form_validate(array $element, &$form_state) {
     if ($form_values['acquia_override_subscription_corename'] == '') {
       $form_state['values']['acquia_override_subscription_corename'] = $form_values['acquia_override_subscription_id'];
     }
+    $identifier = $form_values['acquia_override_subscription_id'];
+    $key = $form_values['acquia_override_subscription_key'];
   }
   elseif ($form_values['acquia_override_selector'] == 'default') {
-    // Delete all possible index variables from the Acquia Multi Subs module, since
-    // we revert to default for this Search Environment
+    // Revert all acquia_override_subscription_* variables to the default for
+    // this Search Environment.
+    // TODO: Is this needed?
     $form_state['values']['acquia_override_subscription_id'] = acquia_agent_settings('acquia_identifier');
     $form_state['values']['acquia_override_subscription_key'] = acquia_agent_settings('acquia_key');
     $form_state['values']['acquia_override_subscription_corename'] = acquia_agent_settings('acquia_identifier');
+    $identifier = acquia_agent_settings('acquia_identifier');
+    $key = acquia_agent_settings('acquia_key');
   }
   else {
+    // Revert id and key overrides to match the current subscription in use,
+    // and revert the overridden corename to the selected one.
+    // TODO: Is this needed?
     $form_state['values']['acquia_override_subscription_id'] = acquia_agent_settings('acquia_identifier');
     $form_state['values']['acquia_override_subscription_key'] = acquia_agent_settings('acquia_key');
     $form_state['values']['acquia_override_subscription_corename'] = $form_values['acquia_override_selector'];
+    $identifier = acquia_agent_settings('acquia_identifier');
+    $key = acquia_agent_settings('acquia_key');
   }
-
-  // Set the identifier and key.
-  $identifier = $form_values['acquia_override_subscription_id'];
-  $key = $form_values['acquia_override_subscription_key'];
-
+  // Check if the picked subscription id/key are valid.
   $subscription = acquia_agent_get_subscription(array(), $identifier, $key);
   if (!is_array($subscription)) {
     form_error($element['acquia_override_subscription_key'], t('This combination of ID and key is not valid.'));
