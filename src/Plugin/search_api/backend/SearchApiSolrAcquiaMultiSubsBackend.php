@@ -41,7 +41,15 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
       // Do the magic env specific detection here.
       $configuration['host'] = acquia_search_get_search_host();
       $configuration['path'] = '/solr/';
-      $configuration['core'] = $this->getEnvironmentCore();
+
+      $suggested_core = $this->getEnvironmentCore();
+
+      if (empty($suggested_core)) {
+        $configuration['core'] = $override['local_core'];
+      }
+      else {
+        $configuration['core'] = $this->getEnvironmentCore();
+      }
     }
     else if (!empty($override['acquia_override_selector'])) {
       $configuration['host'] = acquia_search_get_search_host();
@@ -183,6 +191,31 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
       '#states' => array(
         'visible' => array(
           ':input[name*="acquia_override_auto_switch"]' => array('checked' => FALSE),
+        ),
+      ),
+    );
+
+    $options = array();
+    if (is_array($search_cores)) {
+      foreach ($search_cores as $search_core) {
+        $options[$search_core['core_id']] = $search_core['core_id'];
+        if (strstr($search_core['core_id'], '.failover')) {
+          $failover_exists = TRUE;
+          $matches = array();
+          preg_match("/^([^-]*)/", $search_core['balancer'], $matches);
+          $failover_region = reset($matches);
+        }
+      }
+    }
+    $form['acquia_override_subscription']['local_core'] = array(
+      '#type' => 'select',
+      '#description' => t('Please enter the name of the search core you would like to use on your local environments, e.g. for development reasons.'),
+      '#title' => t('Acquia Search Core'),
+      '#options' => $options,
+      '#default_value' => $this->configuration['acquia_override_subscription']['local_core'],
+      '#states' => array(
+        'visible' => array(
+          ':input[name*="acquia_override_auto_switch"]' => array('checked' => TRUE),
         ),
       ),
     );
