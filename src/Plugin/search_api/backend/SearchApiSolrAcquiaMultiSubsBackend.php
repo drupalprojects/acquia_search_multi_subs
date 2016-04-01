@@ -36,7 +36,14 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
     // Shortcut to the override configuration.
     $override = $configuration['acquia_override_subscription'];
 
-    if (!empty($override['acquia_override_selector'])) {
+    // If auto detection was enabled, we can ignore all other settings.
+    if (!empty($override['acquia_override_auto_switch']) && $override['acquia_override_auto_switch'] == TRUE) {
+      // Do the magic env specific detection here.
+      $configuration['host'] = acquia_search_get_search_host();
+      $configuration['path'] = '/solr/';
+      $configuration['core'] = $this->getEnvironmentCore();
+    }
+    else if (!empty($override['acquia_override_selector'])) {
       $configuration['host'] = acquia_search_get_search_host();
       // Attention! We do not need to add the core to the path, because the core property
       // will inherit the core property. @see Endpoint::getBaseUri().
@@ -44,9 +51,6 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
       // the configuration of this backend to the plugin.
       $configuration['path'] = '/solr/';
       $configuration['core'] = $override['acquia_override_selector'];
-    }
-    else if (!empty($override['acquia_override_auto_switch']) && $override['acquia_override_auto_switch'] == TRUE) {
-      // Do the magic env specific detection here.
     }
     else if (!empty($override['acquia_override_subscription_id']) &&
       !empty($override['acquia_override_subscription_key']) &&
@@ -278,5 +282,116 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
 //      $search_host = acquia_search_multi_subs_get_hostname($corename);
 //      $this->options['host'] = $search_host;
 //    }
+  }
+
+  private function getEnvironmentCore() {
+    $ah_site_environment = isset($_ENV['AH_SITE_ENVIRONMENT']) ? $_ENV['AH_SITE_ENVIRONMENT'] : '';
+    $ah_site_name = isset($_ENV['AH_SITE_NAME']) ? $_ENV['AH_SITE_NAME'] : '';
+    $ah_region = isset($_ENV['AH_CURRENT_REGION']) ? $_ENV['AH_CURRENT_REGION'] : '';
+
+    $conf_path = \Drupal::service('site.path');
+    $sites_foldername = substr($conf_path, strrpos($conf_path, '/') + 1);
+
+    $acquia_identifier = \Drupal::config('acquia_connector.settings')->get('identifier');
+
+    $subscription_expected_search_cores = $this->getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $sites_foldername);
+
+    // Retrieve the list of search cores availablle.
+    $subscription = \Drupal::config('acquia_connector.settings')->get('subscription_data');
+    $available_search_cores = $subscription['heartbeat_data']['search_cores'];
+
+    $match_found = FALSE;
+    foreach ($subscription_expected_search_cores as $expected_core_name) {
+      // This allows us to break from the 2-level deep foreach.
+      if ($match_found) {
+        break;
+      }
+      // Loop over all the available search cores.
+      foreach ($available_search_cores as $available_search_core) {
+        if (strtolower($available_search_core['core_id']) == strtolower($expected_core_name)) {
+          $core = $available_search_core['core_id'];
+          $match_found = TRUE;
+          break;
+        }
+      }
+    }
+    return $core;
+  }
+
+  /**
+   * Calculates eligible search core names based on environment information,
+   * in order of most likely (or preferred!) core names first.
+   *
+   * The generated list of expected core names is done according to Acquia Search
+   * conventions, prioritized in this order:
+   * WXYZ-12345.[env].[sitefolder]
+   * WXYZ-12345.[env].default
+   * WXYZ-12345_[sitename][env]
+   * WXYZ-12345.dev.[sitefolder] (only if $ah_site_environment isn't 'prod')
+   * WXYZ-12345_[sitename]dev    (only if $ah_site_environment isn't 'prod')
+   * WXYZ-12345                  (only if $ah_site_environment is 'prod')
+   *
+   * NOTE that [sitefolder] is a stripped-down version of the sites/* folder,
+   * such that it is only alphanumeric and max. 16 chars in length.
+   * E.g. for sites/www.example.com, the expected corename for a dev environment
+   * could be WXYZ-12345.dev.wwwexamplecom
+   *
+   * @param string $acquia_identifier
+   *   Subscription ID. E.g. WXYZ-12345
+   * @param string $ah_site_environment
+   *   String with the environment, from $_ENV[AH_SITE_ENVIRONMENT].
+   *   E.g. 'dev', 'test', 'prod'.
+   * @param string $ah_site_name
+   *   From $_ENV[AH_SITE_NAME]
+   * @param string $sites_foldername
+   *   Optional. The current site folder within [docroot]/sites/*.
+   *   @see conf_path()
+   * @return array
+   *   The eligible core_ids sorted by best match first.
+   */
+  private function getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $sites_foldername = 'default') {
+    // Build eligible environments array.
+    $ah_environments = array();
+    // If we have the proper environment, add it as the first option.
+    if ($ah_site_environment) {
+      $ah_environments[$ah_site_environment] = $ah_site_name;
+    }
+    // Add fallback options. For sites that lack the AH_* variables or are non-prod
+    // we will try to match .dev.[sitefolder] cores.
+    if ($ah_site_environment != 'prod') {
+      $ah_environments['dev'] = $ah_site_name;
+    }
+
+    $expected_core_names = array();
+    foreach ($ah_environments as $site_environment => $site_name) {
+      // The possible core name suffixes are [current site folder name] and 'default'.
+      $core_suffixes = array_unique(array($sites_foldername, 'default', $ah_site_name));
+      foreach ($core_suffixes as $core_suffix) {
+        // Fix the $core_suffix: alphanumeric only
+        $core_suffix = preg_replace('@[^a-zA-Z0-9]+@', '', $core_suffix);
+        // We first add a 60-char-length indexname, which is the Solr index name limit.
+        $expected_core_names[] = substr($acquia_identifier . '.' . $site_environment . '.' . $core_suffix, 0, 60);
+        // Before 17-nov-2015 (see BZ-2778) the suffix limit was 16 chars; add this as well for backwards compatibility.
+        $expected_core_names[] = $acquia_identifier . '.' . $site_environment . '.' . substr($core_suffix, 0, 16);
+
+        // Add WXYZ-12345_[sitename][env] option.
+        if (!empty($site_name) && $sites_foldername == 'default') {
+          // Replace any weird characters that might appear in the sitegroup name or
+          // identifier.
+          $site_name = preg_replace('@[^a-zA-Z0-9_-]+@', '_', $site_name);
+          $expected_core_names[] = $acquia_identifier . '_' . $site_name;
+        }
+      }
+      // Add our failover options
+      $expected_core_names[] = $acquia_identifier . '.' . $site_environment . '.failover';
+    }
+    // Add suffix-less core if we're on prod now. If the sitename is empty,
+    // it means we are not on Acquia Hosting or something is wrong. Do not
+    // allow the prod index to be one of the available cores.
+    if ($ah_site_environment == 'prod' && $ah_site_name != '') {
+      $expected_core_names[] = $acquia_identifier;
+    }
+
+    return array_unique($expected_core_names);
   }
 }
