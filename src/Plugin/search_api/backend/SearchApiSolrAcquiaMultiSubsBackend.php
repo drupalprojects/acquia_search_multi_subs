@@ -136,7 +136,7 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
       '#description' => $this->t('This is usually not necessary unless you really
         want this search environment to connect to a different Acquia search subscription.
         By default it uses your subscription that was configured for the
-        <a href="@url">Acquia Connector</a>.', array('@url' => Url::fromRoute('acquia_connector.settings')->toString())),
+        <a href=":url">Acquia Connector</a>.', array(':url' => Url::fromRoute('acquia_connector.settings')->toString())),
       '#collapsed' => FALSE,
       '#collapsible' => TRUE,
       '#tree' => TRUE,
