@@ -93,12 +93,12 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
   public function viewSettings() {
     $info = parent::viewSettings();
 
-    $auto_detection = (isset($this->configuration['acquia_override_auto_switch']) && $this->configuration['acquia_override_auto_switch']);
+    $auto_detection = (isset($this->configuration['acquia_override_subscription']['acquia_override_auto_switch']) && $this->configuration['acquia_override_subscription']['acquia_override_auto_switch']);
     $auto_detection_state = ($auto_detection) ? $this->t('enabled') : $this->t('disabled');
 
     $info[] = array(
       'label' => $this->t('Acquia Search Auto Detection'),
-      'info' => $this->t('Auto detection of your environment is <strong>@state</strong>', array('@state' => $auto_detection_state)),
+      'info' => $this->t('Auto detection of your environment is %state', array('%state' => $auto_detection_state)),
     );
 
     return $info;
