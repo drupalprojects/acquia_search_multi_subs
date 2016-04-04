@@ -327,6 +327,7 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
   private function getEnvironmentCore() {
     $ah_site_environment = isset($_ENV['AH_SITE_ENVIRONMENT']) ? $_ENV['AH_SITE_ENVIRONMENT'] : '';
     $ah_site_name = isset($_ENV['AH_SITE_NAME']) ? $_ENV['AH_SITE_NAME'] : '';
+    $ah_site_group = isset($_ENV['AH_SITE_GROUP']) ? $_ENV['AH_SITE_GROUP'] : '';
     $ah_region = isset($_ENV['AH_CURRENT_REGION']) ? $_ENV['AH_CURRENT_REGION'] : '';
 
     $conf_path = \Drupal::service('site.path');
@@ -334,7 +335,7 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
 
     $acquia_identifier = \Drupal::config('acquia_connector.settings')->get('identifier');
 
-    $subscription_expected_search_cores = $this->getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $sites_foldername);
+    $subscription_expected_search_cores = $this->getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $ah_site_group, $sites_foldername);
 
     // Retrieve the list of search cores availablle.
     $subscription = \Drupal::config('acquia_connector.settings')->get('subscription_data');
@@ -364,6 +365,7 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
    *
    * The generated list of expected core names is done according to Acquia Search
    * conventions, prioritized in this order:
+   * WXYZ-12345.[env].[sitegroup]
    * WXYZ-12345.[env].[sitefolder]
    * WXYZ-12345.[env].default
    * WXYZ-12345_[sitename][env]
@@ -382,27 +384,32 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
    *   String with the environment, from $_ENV[AH_SITE_ENVIRONMENT].
    *   E.g. 'dev', 'test', 'prod'.
    * @param string $ah_site_name
-   *   From $_ENV[AH_SITE_NAME]
+   *   The name of the site (includes some form of environment info, from $_ENV['AH_SITE_NAME'].
+   * @param string $ah_site_group
+   *   From $_ENV['AH_SITE_GROUP'].
    * @param string $sites_foldername
    *   Optional. The current site folder within [docroot]/sites/*.
    *   @see conf_path()
    * @return array
    *   The eligible core_ids sorted by best match first.
    */
-  private function getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $sites_foldername = 'default') {
+  private function getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $ah_site_group, $sites_foldername = 'default') {
     // Build eligible environments array.
     $ah_environments = array();
+    $expected_core_names = array();
+
     // If we have the proper environment, add it as the first option.
     if ($ah_site_environment) {
       $ah_environments[$ah_site_environment] = $ah_site_name;
     }
     // Add fallback options. For sites that lack the AH_* variables or are non-prod
-    // we will try to match .dev.[sitefolder] cores.
+    // we will try to match .dev.[sitegroup] cores.
     if ($ah_site_environment != 'prod') {
-      $ah_environments['dev'] = $ah_site_name;
+      $ah_environments['dev'] = $ah_site_group;
+      // Build the CORE.env.site_group default.
+      $expected_core_names[] = $acquia_identifier . '.' . $ah_site_environment . '.' . $ah_site_group;
     }
 
-    $expected_core_names = array();
     foreach ($ah_environments as $site_environment => $site_name) {
       // The possible core name suffixes are [current site folder name] and 'default'.
       $core_suffixes = array_unique(array($sites_foldername, 'default', $ah_site_name));
