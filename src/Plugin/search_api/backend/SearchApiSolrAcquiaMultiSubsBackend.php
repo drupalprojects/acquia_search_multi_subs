@@ -96,9 +96,24 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
     $auto_detection = (isset($this->configuration['acquia_override_subscription']['acquia_override_auto_switch']) && $this->configuration['acquia_override_subscription']['acquia_override_auto_switch']);
     $auto_detection_state = ($auto_detection) ? $this->t('enabled') : $this->t('disabled');
 
+    // Provide a detailed message about the environment the module is detecting.
+    if (isset($_ENV['AH_SITE_ENVIRONMENT'])) {
+      $info_text = $this->t('Auto detection of your environment is %state. Detected environment: :env, site name: :site_name.: ',
+        array(
+          '%state' => $auto_detection_state,
+          ':env' => $_ENV['AH_SITE_ENVIRONMENT'],
+          ':site_name' => $_ENV['AH_SITE_NAME'],
+        )
+      );
+    }
+    else {
+      $info_text = $this->t('Auto detection of your environment is %state. Detecting local environment.',
+        array('%state' => $auto_detection_state));
+    }
+
     $info[] = array(
       'label' => $this->t('Acquia Search Auto Detection'),
-      'info' => $this->t('Auto detection of your environment is %state', array('%state' => $auto_detection_state)),
+      'info' => $info_text,
     );
 
     return $info;
