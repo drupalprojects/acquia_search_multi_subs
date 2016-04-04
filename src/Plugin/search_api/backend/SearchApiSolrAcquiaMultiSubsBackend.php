@@ -41,15 +41,7 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
       // Do the magic env specific detection here.
       $configuration['host'] = acquia_search_get_search_host();
       $configuration['path'] = '/solr/';
-
-      $suggested_core = $this->getEnvironmentCore();
-
-      if (empty($suggested_core)) {
-        $configuration['core'] = $override['local_core'];
-      }
-      else {
-        $configuration['core'] = $suggested_core;
-      }
+      $configuration['core'] = isset($_ENV['AH_SITE_ENVIRONMENT']) ? $this->getEnvironmentCore() : $override['local_core'];
     }
     else if (!empty($override['acquia_override_selector'])) {
       $configuration['host'] = acquia_search_get_search_host();
@@ -321,11 +313,6 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
     $ah_site_environment = isset($_ENV['AH_SITE_ENVIRONMENT']) ? $_ENV['AH_SITE_ENVIRONMENT'] : '';
     $ah_site_name = isset($_ENV['AH_SITE_NAME']) ? $_ENV['AH_SITE_NAME'] : '';
     $ah_region = isset($_ENV['AH_CURRENT_REGION']) ? $_ENV['AH_CURRENT_REGION'] : '';
-
-    // On a local environment do not return an environment specific core.
-    if (!$ah_site_environment) {
-      return;
-    }
 
     $conf_path = \Drupal::service('site.path');
     $sites_foldername = substr($conf_path, strrpos($conf_path, '/') + 1);
