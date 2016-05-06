@@ -258,6 +258,7 @@ function acquia_search_multi_subs_apachesolr_set_default_core($env_id, array $se
   $url = 'http://' . $search_core['balancer'] . variable_get('acquia_search_path', '/solr/'. $search_core['core_id']);
   $apachesolr_environments = variable_get('apachesolr_environments', array());
   $apachesolr_environments[$env_id]['url'] = $url;
+  $apachesolr_environments[$env_id]['conf']['acquia_search_key'] = $derived_key;
   // Set our variable, needs two page loads to make sure it is in the system.
   // Setting the global conf variable is not valid as some calls to
   // apachesolr_load_all_environments happen too early in the process. If we set
@@ -265,5 +266,6 @@ function acquia_search_multi_subs_apachesolr_set_default_core($env_id, array $se
   // this variable only happens when the environment changes and another
   // environment which fits is found.
   variable_set('apachesolr_environments', $apachesolr_environments);
+  $GLOBALS['conf']['apachesolr_environments'] = $apachesolr_environments;
   drupal_static_reset('apachesolr_load_all_environments');
 }
