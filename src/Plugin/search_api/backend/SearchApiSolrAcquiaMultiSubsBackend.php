@@ -50,7 +50,7 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
       // The core property is passed in our connect method, becasue we pass
       // the configuration of this backend to the plugin.
       $configuration['path'] = '/solr/';
-      $configuration['core'] = $override['acquia_override_selector'];
+      $configuration['core'] = isset($_ENV['AH_SITE_ENVIRONMENT']) ? $override['acquia_override_selector'] : $override['local_core'];
     }
     else if (!empty($override['acquia_override_subscription_id']) &&
       !empty($override['acquia_override_subscription_key']) &&
@@ -148,10 +148,6 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
     $form['acquia_override_subscription'] = array(
       '#type' => 'fieldset',
       '#title' => $this->t('Configure Acquia Search'),
-      '#description' => $this->t('This is usually not necessary unless you really
-        want this search environment to connect to a different Acquia search subscription.
-        By default it uses your subscription that was configured for the
-        <a href=":url">Acquia Connector</a>.', array(':url' => Url::fromRoute('acquia_connector.settings')->toString())),
       '#collapsed' => FALSE,
       '#collapsible' => TRUE,
       '#tree' => TRUE,
@@ -161,6 +157,7 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
 
     // Add a checkbox to auto switch per environment.
     $form['acquia_override_subscription']['acquia_override_auto_switch'] = array(
+      '#weight' => -10,
       '#type' => 'checkbox',
       '#title' => $this->t('Automatically switch when an Acquia Environment is detected'),
       '#description' => $this->t('Based on the detection of the AH_SITE_NAME and
@@ -194,7 +191,10 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
       '#title' => t('Acquia Search Core'),
       '#options' => $options,
       '#default_value' => $this->configuration['acquia_override_subscription']['acquia_override_selector'],
-      '#description' => t('Choose a search core to connect to.'),
+      '#description' => $this->t('Choose a search core to connect to. This is usually not necessary unless you really
+        want this search environment to connect to a different Acquia search subscription.
+        By default it uses your subscription that was configured for the
+        <a href=":url">Acquia Connector</a>.', array(':url' => Url::fromRoute('acquia_connector.settings')->toString())),
       '#states' => array(
         'visible' => array(
           ':input[name*="acquia_override_auto_switch"]' => array('checked' => FALSE),
@@ -215,21 +215,17 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
       }
     }
     $form['acquia_override_subscription']['local_core'] = array(
+      '#weight' => 10,
       '#type' => 'select',
       '#description' => t('Please enter the name of the search core you would like to use on your local environments, e.g. for development reasons.'),
-      '#title' => t('Acquia Search Core'),
+      '#title' => t('Core to use when site is running inside non-Acquia (local) environment'),
       '#options' => $options,
       '#default_value' => $this->configuration['acquia_override_subscription']['local_core'],
-      '#states' => array(
-        'visible' => array(
-          ':input[name*="acquia_override_auto_switch"]' => array('checked' => TRUE),
-        ),
-      ),
     );
 
     // Show a warning if there are not enough cores available to make the auto
     // switch possible.
-    if (count($options) <= 2) {
+    if (count($options) < 2) {
       drupal_set_message($this->t('It seems you only have 1 Acquia Search index.
       To find out if you are eligible for a search core per environment it is
       recommended you open a support ticket with Acquia. Once you have that settled,
@@ -329,13 +325,18 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
     $ah_site_name = isset($_ENV['AH_SITE_NAME']) ? $_ENV['AH_SITE_NAME'] : '';
     $ah_site_group = isset($_ENV['AH_SITE_GROUP']) ? $_ENV['AH_SITE_GROUP'] : '';
     $ah_region = isset($_ENV['AH_CURRENT_REGION']) ? $_ENV['AH_CURRENT_REGION'] : '';
+    $ah_db_name = '';
+    if ($ah_site_environment && $ah_site_name && $ah_site_group) {
+      $tmp = \Drupal\Core\Database\Database::getConnection()->getConnectionOptions();
+      $ah_db_name = $tmp['database'];
+    }
 
     $conf_path = \Drupal::service('site.path');
     $sites_foldername = substr($conf_path, strrpos($conf_path, '/') + 1);
 
     $acquia_identifier = \Drupal::config('acquia_connector.settings')->get('identifier');
 
-    $subscription_expected_search_cores = $this->getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $ah_site_group, $sites_foldername);
+    $subscription_expected_search_cores = $this->getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $ah_site_group, $sites_foldername, $ah_db_name);
 
     // Retrieve the list of search cores availablle.
     $subscription = \Drupal::config('acquia_connector.settings')->get('subscription_data');
@@ -365,10 +366,12 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
    *
    * The generated list of expected core names is done according to Acquia Search
    * conventions, prioritized in this order:
+   * WXYZ-12345.[env].[databasename]
    * WXYZ-12345.[env].[sitegroup]
    * WXYZ-12345.[env].[sitefolder]
    * WXYZ-12345.[env].default
    * WXYZ-12345_[sitename][env]
+   * WXYZ-12345.dev.[databasename] (only if $ah_site_environment isn't 'prod')
    * WXYZ-12345.dev.[sitefolder] (only if $ah_site_environment isn't 'prod')
    * WXYZ-12345_[sitename]dev    (only if $ah_site_environment isn't 'prod')
    * WXYZ-12345                  (only if $ah_site_environment is 'prod')
@@ -393,7 +396,7 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
    * @return array
    *   The eligible core_ids sorted by best match first.
    */
-  private function getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $ah_site_group, $sites_foldername = 'default') {
+  private function getExpectedSearchCores($acquia_identifier, $ah_site_environment, $ah_site_name, $ah_site_group, $sites_foldername = 'default', $ah_db_name) {
     // Build eligible environments array.
     $ah_environments = array();
     $expected_core_names = array();
@@ -404,30 +407,31 @@ class SearchApiSolrAcquiaMultiSubsBackend extends SearchApiSolrBackend {
     }
     // Add fallback options. For sites that lack the AH_* variables or are non-prod
     // we will try to match .dev.[sitegroup] cores.
-    if ($ah_site_environment != 'prod') {
+    if ($ah_site_environment != 'prod' && $ah_site_environment != '01live') {
       $ah_environments['dev'] = $ah_site_group;
       // Build the CORE.env.site_group default.
       $expected_core_names[] = $acquia_identifier . '.' . $ah_site_environment . '.' . $ah_site_group;
     }
 
     foreach ($ah_environments as $site_environment => $site_name) {
-      // The possible core name suffixes are [current site folder name] and 'default'.
-      $core_suffixes = array_unique(array($sites_foldername, 'default', $ah_site_name));
+      // The possible core name suffixes are [database name], [current site folder name] and 'default'.
+      $core_suffixes = array_unique(array($ah_db_name, $sites_foldername, 'default', $ah_site_name));
       foreach ($core_suffixes as $core_suffix) {
-        // Fix the $core_suffix: alphanumeric only
-        $core_suffix = preg_replace('@[^a-zA-Z0-9]+@', '', $core_suffix);
-        // We first add a 60-char-length indexname, which is the Solr index name limit.
-        $expected_core_names[] = substr($acquia_identifier . '.' . $site_environment . '.' . $core_suffix, 0, 60);
-        // Before 17-nov-2015 (see BZ-2778) the suffix limit was 16 chars; add this as well for backwards compatibility.
-        $expected_core_names[] = $acquia_identifier . '.' . $site_environment . '.' . substr($core_suffix, 0, 16);
-
-        // Add WXYZ-12345_[sitename][env] option.
-        if (!empty($site_name) && $sites_foldername == 'default') {
-          // Replace any weird characters that might appear in the sitegroup name or
-          // identifier.
-          $site_name = preg_replace('@[^a-zA-Z0-9_-]+@', '_', $site_name);
-          $expected_core_names[] = $acquia_identifier . '_' . $site_name;
+        if ($core_suffix) {
+          // Fix the $core_suffix: alphanumeric only
+          $core_suffix = preg_replace('@[^a-zA-Z0-9]+@', '', $core_suffix);
+          // We first add a 60-char-length indexname, which is the Solr index name limit.
+          $expected_core_names[] = substr($acquia_identifier . '.' . $site_environment . '.' . $core_suffix, 0, 60);
+          // Before 17-nov-2015 (see BZ-2778) the suffix limit was 16 chars; add this as well for backwards compatibility.
+          $expected_core_names[] = $acquia_identifier . '.' . $site_environment . '.' . substr($core_suffix, 0, 16);
         }
+      }
+      // Add WXYZ-12345_[sitename][env] option.
+      if (!empty($site_name) && $sites_foldername == 'default') {
+        // Replace any weird characters that might appear in the sitegroup name or
+        // identifier.
+        $site_name = preg_replace('@[^a-zA-Z0-9_-]+@', '_', $site_name);
+        $expected_core_names[] = $acquia_identifier . '_' . $site_name;
       }
       // Add our failover options
       $expected_core_names[] = $acquia_identifier . '.' . $site_environment . '.failover';

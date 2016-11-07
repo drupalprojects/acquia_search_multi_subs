@@ -45,13 +45,14 @@ class SearchSubscriber extends AbstractPlugin {
     if (!$string) {
       $parsed_url = parse_url($this->uri);
       $path = isset($parsed_url['path']) ? $parsed_url['path'] : '/';
-      $query = isset($parsed_url['query']) ? '?'. $parsed_url['query'] : '';
-      $string = $path . $query; // For pings only.
+      $query = isset($parsed_url['query']) ? '?' . $parsed_url['query'] : '';
+      // For pings only.
+      $string = $path . $query;
     }
 
     $cookie = $this->calculateAuthCookie($string, $this->nonce, NULL, $this->client->getEndpoint()->getOption('core'));
     $request->addHeader('Cookie: ' . $cookie);
-    $request->addHeader('User-Agent: ' . 'acquia_search/'. \Drupal::config('acquia_search.settings')->get('version'));
+    $request->addHeader('User-Agent: ' . 'acquia_search/' . \Drupal::config('acquia_search.settings')->get('version'));
   }
 
   /**
