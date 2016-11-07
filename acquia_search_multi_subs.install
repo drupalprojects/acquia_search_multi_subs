@@ -12,6 +12,7 @@
  * subscription can be pulled in and selected to be connected to.
  */
 function acquia_search_multi_subs_enable() {
+  // TODO: Port to D8.
   acquia_agent_check_subscription();
 }
 
@@ -21,6 +22,7 @@ function acquia_search_multi_subs_enable() {
  * Remove variables from any environment that would have this information
  */
 function acquia_search_multi_subs_uninstall() {
+  return; // TODO: Port to D8.
   if (module_exists('search_api_solr')) {
     $servers = db_select('search_api_server', 's')
       ->fields('s')
@@ -41,6 +43,7 @@ function acquia_search_multi_subs_uninstall() {
  * Remove config overrides.
  */
 function acquia_search_multi_subs_disable() {
+  // TODO: Port to D8.
   // We want to also remove all config overrides when we disable it to avoid
   // confusion.
   acquia_search_multi_subs_uninstall();
