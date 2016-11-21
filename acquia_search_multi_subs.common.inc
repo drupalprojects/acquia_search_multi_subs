@@ -357,3 +357,35 @@ function _acquia_search_multi_subs_create_derived_key($salt, $id, $key) {
   $derivation_string = $id . 'solr' . $salt;
   return hash_hmac('sha1', str_pad($derivation_string, 80, $derivation_string), $key);
 }
+
+/**
+ * Keeps an entry in cache that tracks the current environment, to avoid calling
+ * the auto-switch code on every single load.
+ * @param $module_name
+ *   Either 'apachesolr' or 'searchapisolr'.
+ * @return bool
+ *   Returns TRUE if environment was the same as cached, FALSE if different.
+ */
+function acquia_search_multi_subs_check_and_cache_environment_detection($acquia_identifier, $ah_site_environment, $ah_site_name, $ah_region, $sites_foldername, $module_name) {
+  // Note, we only accept 'apachesolr' or 'searchapisolr' as arguments.
+  if ($module_name != 'apachesolr' && $module_name != 'searchapisolr') {
+    throw new Exception('Invalid argument value.');
+  }
+
+  $cid = 'acquia_search_multi_subs_env_change_' . $module_name;
+  $env_config = array(
+    $acquia_identifier,
+    $ah_site_environment,
+    $ah_site_name,
+    $ah_region,
+    $sites_foldername,
+  );
+  $cached_config = cache_get($cid);
+  if (!empty($cached_config) && $cached_config->expire > REQUEST_TIME && $cached_config->data == $env_config) {
+    // We have already initialized this site with the current environment.
+    return TRUE;
+  }
+  // Something is different about the environment, so return TRUE and keep track of this environment.
+  cache_set($cid, $env_config, 'cache', REQUEST_TIME + 300);
+  return FALSE;
+}
