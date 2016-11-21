@@ -11,6 +11,7 @@
  *
  * The generated list of expected core names is done according to Acquia Search
  * conventions, prioritized in this order:
+ * WXYZ-12345.[env].[acquia_db_name]
  * WXYZ-12345.[env].[sitefolder]
  * WXYZ-12345.[env].default
  * WXYZ-12345_[sitename][env]
@@ -32,11 +33,18 @@
  *   From $_ENV[AH_SITE_NAME]
  * @param string $sites_foldername
  *   Optional. The current site folder within [docroot]/sites/*.
- *   @see conf_path()
+ * @param string $ah_db_name
+ *   The Acquia Hosting current DB name.
  * @return array
  *   The eligible core_ids sorted by best match first.
+ * @see conf_path()
  */
-function acquia_search_multi_subs_get_expected_search_cores($acquia_identifier, $ah_site_environment, $ah_site_name, $sites_foldername = 'default') {
+function acquia_search_multi_subs_get_expected_search_cores(
+  $acquia_identifier,
+  $ah_site_environment,
+  $ah_site_name,
+  $sites_foldername = 'default',
+  $ah_db_name) {
   // Build eligible environments array.
   $ah_environments = array();
   // If we have the proper environment, add it as the first option.
@@ -49,10 +57,15 @@ function acquia_search_multi_subs_get_expected_search_cores($acquia_identifier, 
     $ah_environments['dev'] = $ah_site_name;
   }
 
+  $core_suffixes = array();
+  if (!empty($ah_db_name)) {
+    $core_suffixes[] = $ah_db_name;
+  }
+  // The possible core name suffixes are [current site folder name] and 'default'.
+  $core_suffixes += array_unique(array($sites_foldername, 'default'));
+
   $expected_core_names = array();
   foreach ($ah_environments as $site_environment => $site_name) {
-    // The possible core name suffixes are [current site folder name] and 'default'.
-    $core_suffixes = array_unique(array($sites_foldername, 'default'));
     foreach ($core_suffixes as $core_suffix) {
       // Fix the $core_suffix: alphanumeric only
       $core_suffix = preg_replace('@[^a-zA-Z0-9]+@', '', $core_suffix);
@@ -366,7 +379,7 @@ function _acquia_search_multi_subs_create_derived_key($salt, $id, $key) {
  * @return bool
  *   Returns TRUE if environment was the same as cached, FALSE if different.
  */
-function acquia_search_multi_subs_check_and_cache_environment_detection($acquia_identifier, $ah_site_environment, $ah_site_name, $ah_region, $sites_foldername, $module_name) {
+function acquia_search_multi_subs_check_and_cache_environment_detection($acquia_identifier, $ah_site_environment, $ah_site_name, $ah_region, $sites_foldername, $ah_db_name, $module_name) {
   // Note, we only accept 'apachesolr' or 'searchapisolr' as arguments.
   if ($module_name != 'apachesolr' && $module_name != 'searchapisolr') {
     throw new Exception('Invalid argument value.');
@@ -379,6 +392,7 @@ function acquia_search_multi_subs_check_and_cache_environment_detection($acquia_
     $ah_site_name,
     $ah_region,
     $sites_foldername,
+    $ah_db_name,
   );
   $cached_config = cache_get($cid);
   if (!empty($cached_config) && $cached_config->expire > REQUEST_TIME && $cached_config->data == $env_config) {
