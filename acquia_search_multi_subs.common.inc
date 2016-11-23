@@ -62,7 +62,7 @@ function acquia_search_multi_subs_get_expected_search_cores(
     $core_suffixes[] = $ah_db_name;
   }
   // The possible core name suffixes are [current site folder name] and 'default'.
-  $core_suffixes += array_unique(array($sites_foldername, 'default'));
+  $core_suffixes = array_merge($core_suffixes, array_unique(array($sites_foldername, 'default')));
 
   $expected_core_names = array();
   foreach ($ah_environments as $site_environment => $site_name) {
